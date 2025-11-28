@@ -5,7 +5,7 @@ import time
 
 #sorry to anyone who must go thru/read this later.. including myself
 
-policy_torque = np.array([2.50, 1.99], dtype=np.float32)
+policy_torque = np.array([3.86, 3.86], dtype=np.float32)
 
 def preflight_checks():
         
@@ -352,7 +352,7 @@ def preflight_checks():
 
 
     if knee_active_errors == []:
-        print("Watchdog is already being fed by another program. Quitting")
+        print("Watchdog is already being fed by another program. Quitting") # we expect watchdog to be the only error so if its not there thats a bad thing
         quit()
     elif "WATCHDOG_TIMER_EXPIRED" in knee_active_errors and len(knee_active_errors) != 1:
         print("Persistent Error Detected.")
@@ -385,7 +385,7 @@ def preflight_checks():
 
 
     if foot_active_errors == []:
-        print("Watchdog is already being fed by another program. Quitting")
+        print("Watchdog is already being fed by another program. Quitting") # we expect watchdog to be the only error so if its not there thats a bad thing
         quit()
     elif "WATCHDOG_TIMER_EXPIRED" in foot_active_errors and len(foot_active_errors) != 1:
         print("Persistent Error Detected.")
