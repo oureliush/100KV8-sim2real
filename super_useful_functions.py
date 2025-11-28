@@ -4,8 +4,23 @@ import numpy as np
 
 bus = can.interface.Bus(interface='socketcan', channel='can0')
 
-knee_id = 1
-foot_id = 2
+knee_pos = None
+knee_vel = None
+foot_pos = None
+foot_vel = None
+
+LaccelX = None
+LaccelY = None
+LaccelZ = None
+
+Pitch = None
+GyroX = None
+GyroY = None
+GyroZ = None
+
+
+knee_id = 0
+foot_id = 1
 
 knee_ratio = 6
 foot_ratio = 2
@@ -22,6 +37,7 @@ def bytes_to_signed_int(high_byte, low_byte):
 def recv_process_obs(message):
     global knee_pos, knee_vel, foot_pos, foot_vel
     global LaccelX, LaccelY, LaccelZ, GyroX, GyroY, GyroZ
+    global Pitch
 
     data = message.data
     # Knee
@@ -54,6 +70,9 @@ def recv_process_obs(message):
         GyroY = Int_GyroY / 100
         GyroZ = Int_GyroZ / 100
 
+    elif message.arbitration_id == 0x10:
+        Int_Pitch = bytes_to_signed_int(data[0], data[1])
+        Pitch = Int_Pitch / 100
 
 
 
@@ -78,7 +97,14 @@ def send_joint_commands(actions: np.ndarray):
     ))
 
 
-
+def can_read_thread():
+    while bus.recv(timeout=0) is not None:
+        pass
+    
+    while True:
+        msg = bus.recv()  # Non-blocking read
+        if msg is not None:
+            recv_process_obs(msg)
 
 
 def rescale_actions(low, high, action):
