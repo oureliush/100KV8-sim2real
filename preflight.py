@@ -1,8 +1,7 @@
 from ODrive_Tools import ODrive
 import time
 
-#TODO print checked values
-#TODO allow a flag to be added to the dict that allows the script to modify parameters if necessary
+#maybe print checked values
 
 
 def preflight_check(ODrive: ODrive, expectations: dict):
