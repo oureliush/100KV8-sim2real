@@ -1,1 +1,6 @@
 Thread Modify-Access test.py
+CAN_READ_TEST.py
+__pycache__/ODrive_Tools.cpython-310.pyc
+__pycache__/preflight.cpython-310.pyc
+__pycache__/super_useful_functions.cpython-310.pyc
+.gitignore
