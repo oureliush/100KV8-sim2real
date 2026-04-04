@@ -10,10 +10,13 @@ def preflight_check(ODrive: ODrive, expectations: dict):
 
     printed = False
 
-    for path, value in expectations.items():
+    for path, information in expectations.items():
         # This for loop checks if all values to the paths defined in the dict passed are as they should.
-        read_result = ODrive.read_parameter(path=path) 
-        assert read_result == value, f'Expected the value of {path} to be equal to {value}, but its value was equal to {read_result}'
+        if information.get("writable") == True:
+            ODrive.write_parameter(path, information.get("value"))
+        else:
+            read_result = ODrive.read_parameter(path=path) 
+            assert read_result == information.get("value"), f'Expected the value of {path} to be equal to {information.get("value")}, but its value was equal to {read_result}'
 
     while "DC_BUS_UNDER_VOLTAGE" in ODrive.get_errors()[0]:
         if printed == False: 
