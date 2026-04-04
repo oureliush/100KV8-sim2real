@@ -25,25 +25,26 @@ motor_velocity_limit = 20
 
 
 mock_values = {
-    "axis0.config.torque_soft_max": 0,
-    "axis0.config.torque_soft_min": 0,
+    "axis0.config.torque_soft_max": {"value": 0, "writable": True},
+    "axis0.config.torque_soft_min": {"value": 0, "writable": True},
+    "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
 }
 real_values = {
-    "axis0.config.torque_soft_max": motor_torque_limit,
-    "axis0.config.torque_soft_min": -motor_torque_limit,
-    "axis0.is_homed": True,
-    "axis0.controller.config.vel_limit" : motor_velocity_limit,
-    "axis0.config.enable_watchdog": True,
+    "axis0.config.torque_soft_max": {"value": motor_torque_limit, "writable": False},
+    "axis0.config.torque_soft_min":  {"value": -motor_torque_limit, "writable": False},
+    "axis0.is_homed": {"value": True, "writable": False},
+    "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": False},
+    "axis0.config.enable_watchdog": {"value": True, "writable": False},
     #set msg intervals, to prevent CANBUS flooding
-    "axis0.config.can.heartbeat_msg_rate_ms": 100,
-    "axis0.config.can.encoder_msg_rate_ms": 3,
-    "axis0.config.can.version_msg_rate_ms": 0,
-    "axis0.config.can.iq_msg_rate_ms": 0,
-    "axis0.config.can.error_msg_rate_ms": 0,
-    "axis0.config.can.temperature_msg_rate_ms": 0,
-    "axis0.config.can.bus_voltage_msg_rate_ms": 0,
-    "axis0.config.can.torques_msg_rate_ms": 0,
-    "axis0.config.can.powers_msg_rate_ms": 0,
+    "axis0.config.can.heartbeat_msg_rate_ms": {"value": 100, "writable": True},
+    "axis0.config.can.encoder_msg_rate_ms": {"value": 3, "writable": True},
+    "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.iq_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.error_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.temperature_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.bus_voltage_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.torques_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.powers_msg_rate_ms": {"value": 0, "writable": True},
 }
 
 session = ort.InferenceSession("Leg2Lite.onnx")
