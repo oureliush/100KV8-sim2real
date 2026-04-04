@@ -19,10 +19,9 @@ foot_odrive_node_id = 2
 imu_id = 0x12
 
 # keep in mind this is using odrive units, Nm
-motor_torque_limit = 3.0
+motor_torque_limit = 2.0
 # keep in mind this is using odrive units, turns/s
 motor_velocity_limit = 20
-
 
 mock_values = {
     "axis0.config.torque_soft_max": {"value": 0, "writable": True},
@@ -55,7 +54,6 @@ session = ort.InferenceSession("Leg2Lite.onnx")
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched, or at all.
 #---------------------------------------------------------
-
 knee_gearbox_ratio = 8
 foot_gearbox_ratio = 8
 
@@ -75,10 +73,42 @@ obs_lock = threading.Lock()
 actions_high = np.array([1.0, 1.0])
 actions_low = np.array([-1.0, -1.0])
 
-read_thread = threading.Thread(target=can_read_thread, args=(bus,observation_array,knee_gearbox_ratio,foot_gearbox_ratio,knee_odrive_node_id,foot_odrive_node_id,obs_lock,imu_id))
-control_loop_thread = threading.Thread(target=run_control_loop, args=(CTRL_HZ,DECIMATION_FACTOR,session,observation_array,actions_low,actions_high,Knee_ODrive,Foot_ODrive,trained_model_motor_torque_limitscale,obs_lock))
-decimation_control_loop_thread = threading.Thread(target=run_decimation_control_loop, args=(CTRL_HZ,DECIMATION_FACTOR,session,observation_array,actions_low,actions_high,Knee_ODrive,Foot_ODrive,trained_model_motor_torque_limitscale, obs_lock))
+read_thread = threading.Thread(target=can_read_thread, kwargs={
+    "bus": bus, 
+    "observation_array": observation_array, 
+    "knee_ratio": knee_gearbox_ratio, 
+    "foot_ratio": foot_gearbox_ratio,
+    "knee_id": knee_odrive_node_id,
+    "foot_id": foot_odrive_node_id,
+    "imu_id": imu_id,
+    "lock": obs_lock
+})
 
+control_loop_thread = threading.Thread(target=run_control_loop, kwargs={
+    "CTRL_HZ": CTRL_HZ, 
+    "DECIMATION_FACTOR": DECIMATION_FACTOR, 
+    "onnx_model": session, 
+    "obs": observation_array,
+    "actions_low": actions_low,
+    "actions_high": actions_high,
+    "Knee_ODrive": Knee_ODrive,
+    "Foot_ODrive": Foot_ODrive,
+    "motor_torque_scale": trained_model_motor_torque_limitscale,
+    "lock": obs_lock
+})
+
+decimation_control_loop_thread = threading.Thread(target=run_decimation_control_loop, kwargs={
+    "CTRL_HZ": CTRL_HZ, 
+    "DECIMATION_FACTOR": DECIMATION_FACTOR, 
+    "onnx_model": session, 
+    "obs": observation_array,
+    "actions_low": actions_low,
+    "actions_high": actions_high,
+    "Knee_ODrive": Knee_ODrive,
+    "Foot_ODrive": Foot_ODrive,
+    "motor_torque_scale": trained_model_motor_torque_limitscale,
+    "lock": obs_lock
+})
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched
 #---------------------------------------------------------
@@ -112,7 +142,7 @@ else:
 initalize = input("Joints will be set to Closed Loop Control and positions set to 0.0, Continue? (y/n) ")
 print(initalize)
 
-if initalize == 'y':
+if initalize.strip().lower() == 'y':
     print("Waiting on Knee Joint")
     Knee_ODrive.set_closed_loop_control()
     Knee_ODrive.set_position_control()
