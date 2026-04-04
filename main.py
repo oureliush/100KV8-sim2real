@@ -66,7 +66,7 @@ Foot_ODrive = ODrive(bus=bus, node_id=foot_odrive_node_id)
 user_answer = None
 input_received = False
 
-observation_array = np.empty((7), dtype=np.float32)
+observation_array = np.empty((1, 7), dtype=np.float32)
 
 obs_lock = threading.Lock()
 
@@ -120,6 +120,11 @@ decimation_control_loop_thread = threading.Thread(target=run_decimation_control_
 #-------------------------------------------------------
 # ACTUAL PROGRAM
 #---------------------------------------------------------
+print("Running first 50 inferences to make subsequent runs faster")
+for _ in range(50):
+    session.run(None, {"obs": np.empty((7), dtype=np.float32)})
+print("Done")
+print("")
 
 mock_test = input("Is this a mock test? ")
 print(mock_test)
@@ -155,7 +160,7 @@ if initalize.strip().lower() == 'y':
 
     print("Waiting for IMU")
     for msg in bus:
-        if msg.arbitration_id == 0x12:
+        if msg.arbitration_id == imu_id:
             break
 else:
     quit()
