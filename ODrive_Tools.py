@@ -168,10 +168,10 @@ class ODrive():
     def set_torque_control(self, input_mode=1):
         self.set_controller_mode(1, input_mode)
         
-    def set_input_position_value(self, pos_value: float, vel_ff=0.001, torque_ff=0.001):
+    def set_input_position_value(self, pos_value: float):
         self.bus.send(can.Message(
             arbitration_id=(self.node_id << 5 | 0x0c),
-            data=struct.pack('<fII', pos_value, vel_ff, torque_ff),
+            data=struct.pack('<f', pos_value),
             is_extended_id=False
         ))
 
