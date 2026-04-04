@@ -1,10 +1,12 @@
 import can
 import struct
 import numpy as np
-import threading
 import time
 import onnxruntime as ort
 from ODrive_Tools import ODrive
+
+#TODO: Fix the arduino firmware to send just sent integer values and not bytes
+#to elminate the function below
 
 def bytes_to_signed_int(high_byte, low_byte):
     value = (high_byte << 8) | low_byte
@@ -20,28 +22,28 @@ def recv_process_obs(message: can.Message, observation_array: np.array, knee_rat
             knee_pos, knee_vel = struct.unpack('<ff', bytes(data))
             knee_pos *= (2 * np.pi) / knee_ratio
             knee_vel *= (2 * np.pi) / knee_ratio
-            observation_array[0] = knee_pos
-            observation_array[1] = knee_vel
+            observation_array[0, 0] = knee_pos
+            observation_array[0, 1] = knee_vel
 
         # Foot
         elif message.arbitration_id == (foot_id << 5 | 0x09):  # 0x09: Get_Encoder_Estimates
             foot_pos, foot_vel = struct.unpack('<ff', bytes(data))
             foot_pos *= (2 * np.pi) / foot_ratio
             foot_vel *= (2 * np.pi) / foot_ratio
-            observation_array[2] = foot_pos
-            observation_array[3] = foot_vel
+            observation_array[0, 2] = foot_pos
+            observation_array[0, 3] = foot_vel
 
         # Accelerometer
-        elif message.arbitration_id == 0x12:
+        elif message.arbitration_id == imu_id:
             Int_LaccelX = bytes_to_signed_int(data[0], data[1])
             Int_LaccelY = bytes_to_signed_int(data[2], data[3])
             Int_LaccelZ = bytes_to_signed_int(data[4], data[5])
             LaccelX = Int_LaccelX / 100
             LaccelY = Int_LaccelY / 100
             LaccelZ = Int_LaccelZ / 100
-            observation_array[4] = LaccelX
-            observation_array[5] = LaccelY
-            observation_array[6] = LaccelZ
+            observation_array[0, 4] = LaccelX
+            observation_array[0, 5] = LaccelY
+            observation_array[0, 6] = LaccelZ
 
 
 def can_read_thread(bus: can.interface.Bus, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id):
@@ -110,3 +112,6 @@ def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model
 
             elapsed = time.perf_counter() - loop_start_time
             time.sleep(max(0.0, dt - elapsed))
+
+def flush_can_bus(bus: can.interface.Bus):
+    while not (bus.recv(timeout=0) is None): pass
