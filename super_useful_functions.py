@@ -1,29 +1,10 @@
 import can
 import struct
 import numpy as np
-
-bus = can.interface.Bus(interface='socketcan', channel='can0')
-
-knee_pos = None
-knee_vel = None
-foot_pos = None
-foot_vel = None
-
-LaccelX = None
-LaccelY = None
-LaccelZ = None
-
-Pitch = None
-GyroX = None
-GyroY = None
-GyroZ = None
-
-
-knee_id = 0
-foot_id = 1
-
-knee_ratio = 6
-foot_ratio = 2
+import threading
+import time
+import onnxruntime as ort
+from ODrive_Tools import ODrive
 
 def bytes_to_signed_int(high_byte, low_byte):
     value = (high_byte << 8) | low_byte
@@ -31,80 +12,63 @@ def bytes_to_signed_int(high_byte, low_byte):
         value -= 0x10000
     return value
 
-
-
-
-def recv_process_obs(message):
-    global knee_pos, knee_vel, foot_pos, foot_vel
-    global LaccelX, LaccelY, LaccelZ, GyroX, GyroY, GyroZ
-    global Pitch
-
+def recv_process_obs(message: can.Message, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id):
     data = message.data
-    # Knee
-    if message.arbitration_id == (knee_id << 5 | 0x09):  # 0x09: Get_Encoder_Estimates
-        knee_pos, knee_vel = struct.unpack('<ff', bytes(data))
-        knee_pos *= (2 * np.pi) / knee_ratio
-        knee_vel *= (2 * np.pi) / knee_ratio
+    with lock:
+        # Knee
+        if message.arbitration_id == (knee_id << 5 | 0x09):  # 0x09: Get_Encoder_Estimates
+            knee_pos, knee_vel = struct.unpack('<ff', bytes(data))
+            knee_pos *= (2 * np.pi) / knee_ratio
+            knee_vel *= (2 * np.pi) / knee_ratio
+            observation_array[0] = knee_pos
+            observation_array[1] = knee_vel
 
-    # Foot
-    elif message.arbitration_id == (foot_id << 5 | 0x09):  # 0x09: Get_Encoder_Estimates
-        foot_pos, foot_vel = struct.unpack('<ff', bytes(data))
-        foot_pos *= (2 * np.pi) / foot_ratio
-        foot_vel *= (2 * np.pi) / foot_ratio
+        # Foot
+        elif message.arbitration_id == (foot_id << 5 | 0x09):  # 0x09: Get_Encoder_Estimates
+            foot_pos, foot_vel = struct.unpack('<ff', bytes(data))
+            foot_pos *= (2 * np.pi) / foot_ratio
+            foot_vel *= (2 * np.pi) / foot_ratio
+            observation_array[2] = foot_pos
+            observation_array[3] = foot_vel
 
-    # Accelerometer
-    elif message.arbitration_id == 0x12:
-        Int_LaccelX = bytes_to_signed_int(data[0], data[1])
-        Int_LaccelY = bytes_to_signed_int(data[2], data[3])
-        Int_LaccelZ = bytes_to_signed_int(data[4], data[5])
-        LaccelX = Int_LaccelX / 100
-        LaccelY = Int_LaccelY / 100
-        LaccelZ = Int_LaccelZ / 100
-
-    # Gyroscope
-    elif message.arbitration_id == 0x13:
-        Int_GyroX = bytes_to_signed_int(data[0], data[1])
-        Int_GyroY = bytes_to_signed_int(data[2], data[3])
-        Int_GyroZ = bytes_to_signed_int(data[4], data[5])
-        GyroX = Int_GyroX / 100
-        GyroY = Int_GyroY / 100
-        GyroZ = Int_GyroZ / 100
-
-    elif message.arbitration_id == 0x10:
-        Int_Pitch = bytes_to_signed_int(data[0], data[1])
-        Pitch = Int_Pitch / 100
+        # Accelerometer
+        elif message.arbitration_id == 0x12:
+            Int_LaccelX = bytes_to_signed_int(data[0], data[1])
+            Int_LaccelY = bytes_to_signed_int(data[2], data[3])
+            Int_LaccelZ = bytes_to_signed_int(data[4], data[5])
+            LaccelX = Int_LaccelX / 100
+            LaccelY = Int_LaccelY / 100
+            LaccelZ = Int_LaccelZ / 100
+            observation_array[4] = LaccelX
+            observation_array[5] = LaccelY
+            observation_array[6] = LaccelZ
 
 
-
-
-def send_joint_commands(actions: np.ndarray):
-    # Convert from full gear torque to motor torque
-    # actions[0] = actions[0] / knee_ratio
-    # actions[1] = actions[1] / foot_ratio
-
-    # Send knee torque
-    bus.send(can.Message(
-        arbitration_id=(knee_id << 5 | 0x00e),  # 0x00e: Set_Input_Torque
-        data=struct.pack('<f', actions[0]),
-        is_extended_id=False
-    ))
-
-    # Send foot torque (negative sign if needed)
-    bus.send(can.Message(
-        arbitration_id=(foot_id << 5 | 0x00e),  # 0x00e: Set_Input_Torque
-        data=struct.pack('<f', -actions[1]),
-        is_extended_id=False
-    ))
-
-
-def can_read_thread():
+def can_read_thread(bus: can.interface.Bus, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id):
     while bus.recv(timeout=0) is not None:
         pass
     
     while True:
-        msg = bus.recv()  # Non-blocking read
+        msg = bus.recv()  # non blocking read
         if msg is not None:
-            recv_process_obs(msg)
+            recv_process_obs(
+                message=msg,
+                observation_array=observation_array,
+                knee_ratio=knee_ratio,
+                foot_ratio=foot_ratio,
+                knee_id=knee_id,
+                foot_id=foot_id,
+                lock=lock,
+                imu_id=imu_id,
+                )
+
+def send_joint_commands(actions: np.ndarray, Knee_ODrive: ODrive, Foot_ODrive: ODrive, trained_model_motor_torque_limitscale):
+    # Convert from full gear torque to motor torque
+    knee_action = actions[0] * trained_model_motor_torque_limitscale
+    foot_action = actions[1] * trained_model_motor_torque_limitscale
+
+    Knee_ODrive.set_input_torque_value(knee_action)
+    Foot_ODrive.set_input_torque_value(foot_action)
 
 
 def rescale_actions(low, high, action):
@@ -113,6 +77,36 @@ def rescale_actions(low, high, action):
     scaled_action = action * d + m
     return scaled_action
 
+def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
+    dt = 1.0 / CTRL_HZ
+    while True:
+        with lock:
+            loop_start_time = time.perf_counter()
 
-def check_for_odrive_errors(node_id):
-    print("placeholder for later")
+            if policy_counter % DECIMATION_FACTOR == 0:
+                actions = onnx_model.run(None, {"obs": obs})
+                actions = actions[0][0]
+                clamped_actions = np.clip(actions, -1.0, 1.0)
+                rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
+                send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+            
+            policy_counter += 1
+
+            elapsed = time.perf_counter() - loop_start_time
+            time.sleep(max(0.0, dt - elapsed))
+
+
+def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
+    dt = 1.0 / (CTRL_HZ/DECIMATION_FACTOR)
+    while True:
+        with lock:
+            loop_start_time = time.perf_counter()
+
+            actions = onnx_model.run(None, {"obs": obs})
+            actions = actions[0][0]
+            clamped_actions = np.clip(actions, -1.0, 1.0)
+            rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
+            send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+
+            elapsed = time.perf_counter() - loop_start_time
+            time.sleep(max(0.0, dt - elapsed))
