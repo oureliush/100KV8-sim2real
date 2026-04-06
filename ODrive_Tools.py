@@ -60,6 +60,8 @@ class ODrive():
         self.bus = bus
         self.node_id = node_id
 
+        while not (self.bus.recv(timeout=0) is None): pass
+
         # Send read command
         self.bus.send(can.Message(
             arbitration_id=(self.node_id << 5 | 0x00), # 0x00: Get_Version
@@ -132,6 +134,8 @@ class ODrive():
     
 
     def set_axis_state(self, requested_state):
+        while not (self.bus.recv(timeout=0) is None): pass
+
         self.bus.send(can.Message(
             arbitration_id=(self.node_id << 5 | 0x07),  # 0x07: Set_Axis_State
             data=struct.pack('<I', requested_state),  # 8: AxisState.CLOSED_LOOP_CONTROL
@@ -206,11 +210,13 @@ class ODrive():
     def reboot(self, action):
         self.bus.send(can.Message(
             arbitration_id=(self.node_id << 5 | 0x19),
-            data=struct.pack('<B', action ),
+            data=struct.pack('<B', action),
             is_extended_id=False
         ))
 
     def get_errors(self):
+        while not (self.bus.recv(timeout=0) is None): pass
+
         self.bus.send(can.Message(
             arbitration_id=(self.node_id << 5 | 0x03), # 0x03: Get_Errors
             data=b'',
