@@ -6,6 +6,7 @@ import onnxruntime as ort
 from ODrive_Tools import ODrive
 
 #TODO: Fix the arduino firmware to send just sent integer values and not bytes
+#Safety Threads??
 #to elminate the function below
 
 def bytes_to_signed_int(high_byte, low_byte):
@@ -80,38 +81,46 @@ def rescale_actions(low, high, action):
     return scaled_action
 
 def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
+    #TODO only lock when actually using the observations
     dt = 1.0 / CTRL_HZ
     while True:
-        with lock:
-            loop_start_time = time.perf_counter()
+        loop_start_time = time.perf_counter()
 
-            if policy_counter % DECIMATION_FACTOR == 0:
-                actions = onnx_model.run(None, {"obs": obs})
-                actions = actions[0][0]
-                clamped_actions = np.clip(actions, -1.0, 1.0)
-                rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
-                send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
-            
-            policy_counter += 1
+        if policy_counter % DECIMATION_FACTOR == 0:
 
-            elapsed = time.perf_counter() - loop_start_time
-            time.sleep(max(0.0, dt - elapsed))
+            with lock:
+                observations = obs
+                
+            actions = onnx_model.run(None, {"obs": observations})
+            actions = actions[0][0]
+            #TODO: VERIFY ACTION PROCESSING 
+            clamped_actions = np.clip(actions, -1.0, 1.0)
+            rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
+            send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+        
+        policy_counter += 1
+
+        elapsed = time.perf_counter() - loop_start_time
+        time.sleep(max(0.0, dt - elapsed))
 
 
 def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
     dt = 1.0 / (CTRL_HZ/DECIMATION_FACTOR)
     while True:
+        loop_start_time = time.perf_counter()
+
         with lock:
-            loop_start_time = time.perf_counter()
+            observations = obs
 
-            actions = onnx_model.run(None, {"obs": obs})
-            actions = actions[0][0]
-            clamped_actions = np.clip(actions, -1.0, 1.0)
-            rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
-            send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+        actions = onnx_model.run(None, {"obs": observations})
+        actions = actions[0][0]
+        clamped_actions = np.clip(actions, -1.0, 1.0)
+        rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
+        send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
 
-            elapsed = time.perf_counter() - loop_start_time
-            time.sleep(max(0.0, dt - elapsed))
+        elapsed = time.perf_counter() - loop_start_time
+        time.sleep(max(0.0, dt - elapsed))
 
 def flush_can_bus(bus: can.interface.Bus):
     while not (bus.recv(timeout=0) is None): pass
+
