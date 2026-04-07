@@ -81,7 +81,6 @@ def rescale_actions(low, high, action):
     return scaled_action
 
 def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
-    #TODO only lock when actually using the observations
     dt = 1.0 / CTRL_HZ
     while True:
         loop_start_time = time.perf_counter()
