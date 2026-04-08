@@ -8,6 +8,8 @@ import can
 import numpy as np
 import torch
 
+# This is literally just straight outta GPT, IGNORE!
+
 # --------------------------------------------------------------------------------------------
 # This script performs sim2real for the Leg2Lite environment described in your code:
 #   - It subscribes to /joint_states and /imu/data.
