@@ -4,10 +4,11 @@ import numpy as np
 import time
 import onnxruntime as ort
 from ODrive_Tools import ODrive
+import threading
 
-#TODO: Fix the arduino firmware to send just sent integer values and not bytes
 #Safety Threads??
-#to elminate the function below
+
+#TODO: eliminate bytes to signed function and just use struct.unpack.. eventually
 
 def bytes_to_signed_int(high_byte, low_byte):
     value = (high_byte << 8) | low_byte
@@ -15,7 +16,7 @@ def bytes_to_signed_int(high_byte, low_byte):
         value -= 0x10000
     return value
 
-def recv_process_obs(message: can.Message, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id):
+def recv_process_obs(message: can.Message, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id: int):
     data = message.data
     with lock:
         # Knee
@@ -47,10 +48,14 @@ def recv_process_obs(message: can.Message, observation_array: np.array, knee_rat
             observation_array[0, 6] = LaccelZ
 
 
-def can_read_thread(bus: can.interface.Bus, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock, imu_id):
+
+def can_read_thread(bus: can.interface.Bus, observation_array: np.array, knee_ratio: int, foot_ratio: int, knee_id: int, foot_id: int, lock: threading.Lock, imu_id: int, flag: threading.Event):
     while bus.recv(timeout=0) is not None:
         pass
     
+    # alerts that canbus has been flushed
+    flag.set()
+
     while True:
         msg = bus.recv()  # non blocking read
         if msg is not None:
@@ -65,7 +70,7 @@ def can_read_thread(bus: can.interface.Bus, observation_array: np.array, knee_ra
                 imu_id=imu_id,
                 )
 
-def send_joint_commands(actions: np.ndarray, Knee_ODrive: ODrive, Foot_ODrive: ODrive, trained_model_motor_torque_limitscale):
+def send_joint_commands(actions: np.ndarray, Knee_ODrive: ODrive, Foot_ODrive: ODrive, trained_model_motor_torque_limitscale: float):
     # Convert from full gear torque to motor torque
     knee_action = actions[0] * trained_model_motor_torque_limitscale
     foot_action = actions[1] * trained_model_motor_torque_limitscale
@@ -80,22 +85,21 @@ def rescale_actions(low, high, action):
     scaled_action = action * d + m
     return scaled_action
 
-def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
+def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive: ODrive, Foot_ODrive: ODrive, motor_torque_scale: float, lock: threading.Lock):
     dt = 1.0 / CTRL_HZ
+    policy_counter = 0
     while True:
         loop_start_time = time.perf_counter()
 
         if policy_counter % DECIMATION_FACTOR == 0:
-
             with lock:
                 observations = obs
-                
+
             actions = onnx_model.run(None, {"obs": observations})
             actions = actions[0][0]
-            #TODO: VERIFY ACTION PROCESSING 
             clamped_actions = np.clip(actions, -1.0, 1.0)
             rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
-            send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+            send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive, motor_torque_scale)
         
         policy_counter += 1
 
@@ -103,7 +107,7 @@ def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.Infer
         time.sleep(max(0.0, dt - elapsed))
 
 
-def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive, Foot_ODrive, motor_torque_scale, lock):
+def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive: ODrive, Foot_ODrive: ODrive, motor_torque_scale: float, lock: threading.Lock):
     dt = 1.0 / (CTRL_HZ/DECIMATION_FACTOR)
     while True:
         loop_start_time = time.perf_counter()
@@ -111,7 +115,7 @@ def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model
         with lock:
             observations = obs
 
-        actions = onnx_model.run(None, {"obs": observations})
+        actions = onnx_model.run(None, {"obs": observations}) 
         actions = actions[0][0]
         clamped_actions = np.clip(actions, -1.0, 1.0)
         rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
@@ -123,3 +127,9 @@ def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model
 def flush_can_bus(bus: can.interface.Bus):
     while not (bus.recv(timeout=0) is None): pass
 
+def keep_odrives_alive_by_sending_zero_pos(stop_flag: threading.Event, Knee_ODrive: ODrive, Foot_ODrive: ODrive):
+    while stop_flag.is_set() == False:
+        Knee_ODrive.set_input_position_value(0.0)
+        Foot_ODrive.set_input_position_value(0.0)
+
+        stop_flag.wait(0.1)
