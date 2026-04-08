@@ -9,14 +9,16 @@ from super_useful_functions import *
 #----------------------
 # Parameters!!!
 #----------------------
-CTRL_HZ = 200  # ~5 ms control loop
-DECIMATION_FACTOR = 4
+session = ort.InferenceSession("2J_100KV8_dummy.onnx")
 
 bus = can.interface.Bus(interface='socketcan', channel='can0')
 
 knee_odrive_node_id = 1 
 foot_odrive_node_id = 2
 imu_id = 0x12
+
+CTRL_HZ = 200  # ~5 ms control loop
+DECIMATION_FACTOR = 4
 
 # keep in mind this is using odrive units, Nm
 motor_torque_limit = 2.0
@@ -26,15 +28,8 @@ motor_velocity_limit = 20
 mock_values = {
     "axis0.config.torque_soft_max": {"value": 0, "writable": True},
     "axis0.config.torque_soft_min": {"value": 0, "writable": True},
-    "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
-}
-real_values = {
-    "axis0.config.torque_soft_max": {"value": motor_torque_limit, "writable": False},
-    "axis0.config.torque_soft_min":  {"value": -motor_torque_limit, "writable": False},
-    "axis0.is_homed": {"value": True, "writable": False},
-    "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": False},
-    "axis0.config.enable_watchdog": {"value": True, "writable": False},
-    #set msg intervals, to prevent CANBUS flooding
+    "axis0.config.enable_watchdog": {"value": True, "writable": True},
+    "axis0.config.watchdog_timeout": {"value": 0.5, "writable": True},
     "axis0.config.can.heartbeat_msg_rate_ms": {"value": 100, "writable": True},
     "axis0.config.can.encoder_msg_rate_ms": {"value": 3, "writable": True},
     "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
@@ -46,7 +41,24 @@ real_values = {
     "axis0.config.can.powers_msg_rate_ms": {"value": 0, "writable": True},
 }
 
-session = ort.InferenceSession("Leg2Lite.onnx")
+real_values = {
+    "axis0.config.torque_soft_max": {"value": motor_torque_limit, "writable": False},
+    "axis0.config.torque_soft_min":  {"value": -motor_torque_limit, "writable": False},
+    "axis0.is_homed": {"value": True, "writable": False},
+    "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": False},
+    "axis0.config.enable_watchdog": {"value": True, "writable": True},
+    "axis0.config.watchdog_timeout": {"value": 0.5, "writable": True},
+    #set msg intervals, to prevent CANBUS flooding
+    "axis0.config.can.heartbeat_msg_rate_ms": {"value": 100, "writable": True},
+    "axis0.config.can.encoder_msg_rate_ms": {"value": 3, "writable": True},
+    "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.iq_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.error_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.temperature_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.bus_voltage_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.torques_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.powers_msg_rate_ms": {"value": 0, "writable": True},
+}
 #----------------------
 # Parameters!!!
 #----------------------
@@ -63,10 +75,10 @@ trained_model_motor_torque_limitscale = 5.0
 Knee_ODrive = ODrive(bus=bus, node_id=knee_odrive_node_id)
 Foot_ODrive = ODrive(bus=bus, node_id=foot_odrive_node_id)
 
-user_answer = None
-input_received = False
+can_bus_flushed = threading.Event()
+stop_keep_alive = threading.Event()
 
-observation_array = np.empty((1, 7), dtype=np.float32)
+observation_array = np.zeros((1, 7), dtype=np.float32)
 
 obs_lock = threading.Lock()
 
@@ -81,8 +93,11 @@ read_thread = threading.Thread(target=can_read_thread, kwargs={
     "knee_id": knee_odrive_node_id,
     "foot_id": foot_odrive_node_id,
     "imu_id": imu_id,
-    "lock": obs_lock
+    "lock": obs_lock,
+    "flag": can_bus_flushed
 })
+
+read_thread.daemon = True
 
 control_loop_thread = threading.Thread(target=run_control_loop, kwargs={
     "CTRL_HZ": CTRL_HZ, 
@@ -109,6 +124,16 @@ decimation_control_loop_thread = threading.Thread(target=run_decimation_control_
     "motor_torque_scale": trained_model_motor_torque_limitscale,
     "lock": obs_lock
 })
+
+keep_alive_thread = threading.Thread(target=keep_odrives_alive_by_sending_zero_pos, kwargs={
+    "stop_flag": stop_keep_alive, 
+    "Knee_ODrive": Knee_ODrive, 
+    "Foot_ODrive": Foot_ODrive, 
+})
+
+# this is important because if Ctrl-C is done at commence sim2real prompt, the keep alive thread wont stop!
+keep_alive_thread.daemon = True
+
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched
 #---------------------------------------------------------
@@ -120,33 +145,31 @@ decimation_control_loop_thread = threading.Thread(target=run_decimation_control_
 #-------------------------------------------------------
 # ACTUAL PROGRAM
 #---------------------------------------------------------
-print("Running first 50 inferences to make subsequent runs faster")
+print("Running first 50 inferences to make subsequent runs faster", end= ".. ")
 for _ in range(50):
-    session.run(None, {"obs": np.empty((7), dtype=np.float32)})
+    session.run(None, {"obs": np.empty((1, 7), dtype=np.float32)})
 print("Done")
 print("")
 
-mock_test = input("Is this a mock test? ")
-print(mock_test)
-
+mock_test = input("Is this a mock test? (y/n) ")
+#input handling
 if mock_test.strip().lower() == 'y':
     do_preflight_checks([Knee_ODrive, Foot_ODrive], mock_values)
 elif mock_test.strip().lower() == 'n':
-    
     confirmation = input("Please confirm that this is a real test! ")
-    print(confirmation)
     if confirmation.strip().lower() == 'y':
         print("Confirmed")
         do_preflight_checks([Knee_ODrive, Foot_ODrive], real_values)
     else:
+        bus.shutdown()
         quit()
 else:
+    bus.shutdown()
     quit()
-    
 
-initalize = input("Joints will be set to Closed Loop Control and positions set to 0.0, Continue? (y/n) ")
-print(initalize)
 
+initalize = input("Joints will be set to Closed Loop Control and positions set to 0, Continue? (y/n) ")
+#input handling
 if initalize.strip().lower() == 'y':
     print("Waiting on Knee Joint")
     Knee_ODrive.set_closed_loop_control()
@@ -162,32 +185,55 @@ if initalize.strip().lower() == 'y':
     for msg in bus:
         if msg.arbitration_id == imu_id:
             break
+    print("All controllers working properly")
 else:
+    bus.shutdown()
     quit()
 
-def input_thread_func(prompt):
-    global user_answer, input_received
-    user_answer = input(prompt)
-    input_received = True
+# we start the read thread here because we are no longer calling functions which expect responses from the odrives.
+read_thread.start()
 
-# Start the thread that asks about sim2real
-thread = threading.Thread(
-    target=input_thread_func,
-    args=('Commence sim2real? (y/n) ',)
-)
-thread.start()
-
-# keep the robot from timing out by sending zero velocity while waiting
-while not input_received:
+print("Flushing CAN BUS before resuming operation")
+while can_bus_flushed.is_set() == False:
     Knee_ODrive.set_input_position_value(0.0)
     Foot_ODrive.set_input_position_value(0.0)
-
-    # lets not flood the CAN bus with nonsense.
+    
     time.sleep(0.1)
+print("Flushed!")
 
-if user_answer.strip().lower() != 'y':
+keep_alive_thread.start()
+
+print("")
+commence = input("Commence sim2real? (y/n) ")
+
+if commence.strip().lower() == 'y':
+    stop_keep_alive.set()
+    keep_alive_thread.join()
+else:
+    stop_keep_alive.set()
+    keep_alive_thread.join()
+    bus.shutdown()
     quit()
-
 
 Knee_ODrive.set_torque_control()
 Foot_ODrive.set_torque_control()
+
+#small delay
+time.sleep(0.1)
+
+# This is where the real magic happens! If you looking at this script
+# as reference on how to achieve sim2real, this function is what your looking for!
+run_control_loop(CTRL_HZ=CTRL_HZ,
+                 DECIMATION_FACTOR=DECIMATION_FACTOR,
+                 onnx_model=session,
+                 obs=observation_array,
+                 actions_high=actions_high,
+                 actions_low=actions_low,
+                 Knee_ODrive=Knee_ODrive,
+                 Foot_ODrive=Foot_ODrive,
+                 motor_torque_scale=trained_model_motor_torque_limitscale,
+                 lock=obs_lock
+                 )
+
+# if going for thread approach, make sure you disable daemon mode for the can_read_thread
+#control_loop_thread.start()
