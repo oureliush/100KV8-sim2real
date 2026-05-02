@@ -83,6 +83,7 @@ def rescale_actions(low, high, action):
     d = (high - low) / 2.0
     m = (high + low) / 2.0
     scaled_action = action * d + m
+
     return scaled_action
 
 def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.InferenceSession, obs: np.array, actions_low: np.array, actions_high: np.array, Knee_ODrive: ODrive, Foot_ODrive: ODrive, motor_torque_scale: float, lock: threading.Lock):
@@ -111,7 +112,6 @@ def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model
     dt = 1.0 / (CTRL_HZ/DECIMATION_FACTOR)
     while True:
         loop_start_time = time.perf_counter()
-
         with lock:
             observations = obs
 
@@ -128,8 +128,10 @@ def flush_can_bus(bus: can.interface.Bus):
     while not (bus.recv(timeout=0) is None): pass
 
 def keep_odrives_alive_by_sending_zero_pos(stop_flag: threading.Event, Knee_ODrive: ODrive, Foot_ODrive: ODrive):
+    print("Keeping ODrives alive by sending zero pos!")
     while stop_flag.is_set() == False:
         Knee_ODrive.set_input_position_value(0.0)
         Foot_ODrive.set_input_position_value(0.0)
 
         stop_flag.wait(0.1)
+    print("Stopped keeping ODrives Alive!")
