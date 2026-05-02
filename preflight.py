@@ -3,7 +3,6 @@ import time
 
 #maybe print checked values
 
-
 def preflight_check(ODrive: ODrive, expectations: dict):
     #This function is used to check one ODrive. So if you have a list of ODrives to check, don't use this.
 
