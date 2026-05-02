@@ -1,16 +1,20 @@
 from ODrive_Tools import ODrive
-import can
+from super_useful_functions import *
 from preflight import *
+
+import can
 import threading
 import numpy as np
 import onnxruntime as ort
-from super_useful_functions import *
+
 
 #----------------------
 # Parameters!!!
 #----------------------
 session = ort.InferenceSession("2J_100KV8_dummy.onnx")
 
+# sudo ip link set can0 type can bitrate 1000000
+# sudo ip link set up can0
 bus = can.interface.Bus(interface='socketcan', channel='can0')
 
 knee_odrive_node_id = 1 
@@ -66,8 +70,8 @@ real_values = {
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched, or at all.
 #---------------------------------------------------------
-knee_gearbox_ratio = 8
-foot_gearbox_ratio = 8
+knee_gearbox_ratio = 8/1
+foot_gearbox_ratio = 8/1
 
 # whatever the value the actions was multiplied by in training
 trained_model_motor_torque_limitscale = 5.0
@@ -97,7 +101,6 @@ read_thread = threading.Thread(target=can_read_thread, kwargs={
     "flag": can_bus_flushed
 })
 
-read_thread.daemon = True
 
 control_loop_thread = threading.Thread(target=run_control_loop, kwargs={
     "CTRL_HZ": CTRL_HZ, 
@@ -131,8 +134,8 @@ keep_alive_thread = threading.Thread(target=keep_odrives_alive_by_sending_zero_p
     "Foot_ODrive": Foot_ODrive, 
 })
 
-# this is important because if Ctrl-C is done at commence sim2real prompt, the keep alive thread wont stop!
-keep_alive_thread.daemon = True
+read_thread.daemon = True
+keep_alive_thread.daemon = True # this is important because if Ctrl-C is done at commence sim2real prompt, the keep alive thread wont stop!
 
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched
@@ -148,6 +151,7 @@ keep_alive_thread.daemon = True
 print("Running first 50 inferences to make subsequent runs faster", end= ".. ")
 for _ in range(50):
     session.run(None, {"obs": np.empty((1, 7), dtype=np.float32)})
+
 print("Done")
 print("")
 
@@ -193,22 +197,19 @@ else:
 # we start the read thread here because we are no longer calling functions which expect responses from the odrives.
 read_thread.start()
 
+keep_alive_thread.start()
+
 print("Flushing CAN BUS before resuming operation")
 while can_bus_flushed.is_set() == False:
-    Knee_ODrive.set_input_position_value(0.0)
-    Foot_ODrive.set_input_position_value(0.0)
-    
-    time.sleep(0.1)
+    pass
 print("Flushed!")
-
-keep_alive_thread.start()
 
 print("")
 commence = input("Commence sim2real? (y/n) ")
-
+# input handling
 if commence.strip().lower() == 'y':
     stop_keep_alive.set()
-    keep_alive_thread.join()
+    keep_alive_thread.join() 
 else:
     stop_keep_alive.set()
     keep_alive_thread.join()
