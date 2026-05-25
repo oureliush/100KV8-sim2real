@@ -25,7 +25,7 @@ CTRL_HZ = 200  # ~5 ms control loop
 DECIMATION_FACTOR = 4
 
 # keep in mind this is using odrive units, Nm
-motor_torque_limit = 2.0
+motor_torque_limit = 2.5
 # keep in mind this is using odrive units, turns/s
 motor_velocity_limit = 20
 
@@ -173,10 +173,10 @@ else:
 
 
 initalize = input("Joints will be set to Closed Loop Control and positions set to 0, Continue? (y/n) ")
+
 #input handling
 if initalize.strip().lower() == 'y':
-    print("Flushing CAN BUS before resuming operation")
-    flush_can_bus(bus)
+    keep_alive_thread.start()
 
     print("Waiting on Knee Joint")
     Knee_ODrive.set_closed_loop_control()
@@ -199,8 +199,6 @@ else:
 
 # we start the read thread here because we are no longer calling functions which expect responses from the odrives.
 read_thread.start()
-
-keep_alive_thread.start()
 
 print("Flushing CAN BUS before resuming operation")
 while can_bus_flushed.is_set() == False:
