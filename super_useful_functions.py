@@ -76,7 +76,7 @@ def send_joint_commands(actions: np.ndarray, Knee_ODrive: ODrive, Foot_ODrive: O
     foot_action = actions[1] * trained_model_motor_torque_limitscale
 
     Knee_ODrive.set_input_torque_value(knee_action)
-    Foot_ODrive.set_input_torque_value(foot_action)
+    Foot_ODrive.set_input_torque_value(-foot_action)
 
 
 def rescale_actions(low, high, action):
@@ -133,5 +133,5 @@ def keep_odrives_alive_by_sending_zero_pos(stop_flag: threading.Event, Knee_ODri
         Knee_ODrive.set_input_position_value(0.0)
         Foot_ODrive.set_input_position_value(0.0)
 
-        stop_flag.wait(0.1)
+        stop_flag.wait(0.01)
     print("Stopped keeping ODrives Alive!")
