@@ -11,7 +11,7 @@ import onnxruntime as ort
 #----------------------
 # Parameters!!!
 #----------------------
-session = ort.InferenceSession("2J_100KV8_dummy.onnx")
+session = ort.InferenceSession("2J_100KV8_trained.onnx")
 
 # sudo ip link set can0 type can bitrate 1000000
 # sudo ip link set up can0
