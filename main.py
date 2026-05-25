@@ -33,7 +33,7 @@ mock_values = {
     "axis0.config.torque_soft_max": {"value": 0, "writable": True},
     "axis0.config.torque_soft_min": {"value": 0, "writable": True},
     "axis0.config.enable_watchdog": {"value": True, "writable": True},
-    "axis0.config.watchdog_timeout": {"value": 0.5, "writable": True},
+    "axis0.config.watchdog_timeout": {"value": 0.025, "writable": True},
     "axis0.config.can.heartbeat_msg_rate_ms": {"value": 100, "writable": True},
     "axis0.config.can.encoder_msg_rate_ms": {"value": 3, "writable": True},
     "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
@@ -51,7 +51,7 @@ real_values = {
     "axis0.is_homed": {"value": True, "writable": False},
     "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": False},
     "axis0.config.enable_watchdog": {"value": True, "writable": True},
-    "axis0.config.watchdog_timeout": {"value": 0.5, "writable": True},
+    "axis0.config.watchdog_timeout": {"value": 0.025, "writable": True},
     #set msg intervals, to prevent CANBUS flooding
     "axis0.config.can.heartbeat_msg_rate_ms": {"value": 100, "writable": True},
     "axis0.config.can.encoder_msg_rate_ms": {"value": 3, "writable": True},
@@ -71,7 +71,7 @@ real_values = {
 #variables that keep the program flowing as it should | Not frequently touched, or at all.
 #---------------------------------------------------------
 knee_gearbox_ratio = 8/1
-foot_gearbox_ratio = 8/1
+foot_gearbox_ratio = -8/1 
 
 # whatever the value the actions was multiplied by in training
 trained_model_motor_torque_limitscale = 5.0
@@ -175,6 +175,9 @@ else:
 initalize = input("Joints will be set to Closed Loop Control and positions set to 0, Continue? (y/n) ")
 #input handling
 if initalize.strip().lower() == 'y':
+    print("Flushing CAN BUS before resuming operation")
+    flush_can_bus(bus)
+
     print("Waiting on Knee Joint")
     Knee_ODrive.set_closed_loop_control()
     Knee_ODrive.set_position_control()
@@ -220,7 +223,7 @@ Knee_ODrive.set_torque_control()
 Foot_ODrive.set_torque_control()
 
 #small delay
-time.sleep(0.1)
+time.sleep(0.01)
 
 # This is where the real magic happens! If you looking at this script
 # as reference on how to achieve sim2real, this function is what your looking for!
