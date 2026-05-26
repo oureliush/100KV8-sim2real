@@ -5,10 +5,67 @@ import time
 import onnxruntime as ort
 from ODrive_Tools import ODrive
 import threading
+import pyudev
+import subprocess
+import os
 
 #Safety Threads??
 
-#TODO: eliminate bytes to signed function and just use struct.unpack.. eventually
+#TODO: eliminate bytes to signed function and just use struct.unpack.. eventuallys
+
+def check_if_ran_with_taskset():
+    # false positives can occur if OS limits the allowed cpus for some other reason.
+    total_cpus = os.cpu_count()
+    allowed_cpus = len(os.sched_getaffinity(0))
+    return allowed_cpus < total_cpus
+
+def initialize_canbus(interfacef: str = "socketcan", channelf: str = "can0"):
+    can_initalized = False  
+
+    try:
+        buss = can.interface.Bus(interface=interfacef, channel=channelf)
+    except OSError as e:
+        if e.errno == 19:
+            context = pyudev.Context()
+            monitor = pyudev.Monitor.from_netlink(context)
+            monitor.filter_by(subsystem='usb')
+
+            print("Waiting on USB-CAN adapter")
+            for device in iter(monitor.poll, None):
+                if device.action == 'add' and device.get('ID_MODEL') == "USB_to_CAN_Adapter":
+                    time.sleep(0.1)
+                    buss = can.interface.Bus(interface=interfacef, channel=channelf) # If this fails, USB Connection is likely intermittent
+                    break
+
+    print("USB-CAN adapter Connected")
+
+
+    print("Checking if CAN interface is initalized...")
+
+    result0 = subprocess.run(["cat", "/sys/class/net/can0/operstate"], capture_output=True, text=True)
+
+    if result0.stdout == "up\n":
+        can_initalized = True
+
+    if can_initalized == True:
+        print("CAN interface detected!")
+        return buss
+    else:
+        print("CAN interface not detected! Attempting to initalize!")
+        result1 = subprocess.run(["sudo", "ip", "link", "set", "can0", "type", "can", "bitrate", "1000000"], capture_output=True, text=True)
+        if result1.returncode == 0:
+            result1 = subprocess.run(["sudo", "ip", "link", "set", "up", "can0"], capture_output=True, text=True)
+        else:
+            raise OSError("Something went wrong: Command did not run sucessfully. Code: 1") # command "sudo ip link set can0 type can bitrate 1000000" did not run successfully
+
+        result3 = subprocess.run(["cat", "/sys/class/net/can0/operstate"], capture_output=True, text=True)
+        if result3.stdout == "up\n" and result3.returncode == 0:
+            can_initalized = True
+            print("CAN interface has been initalized!")
+            return buss
+        else:
+            raise OSError("Something went wrong: Returned value was different from expected value. Code: 2") # CAN interface was expected to be up, but was not.
+
 
 def bytes_to_signed_int(high_byte, low_byte):
     value = (high_byte << 8) | low_byte

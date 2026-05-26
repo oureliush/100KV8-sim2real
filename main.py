@@ -7,15 +7,15 @@ import threading
 import numpy as np
 import onnxruntime as ort
 
-
 #----------------------
 # Parameters!!!
 #----------------------
 session = ort.InferenceSession("2J_100KV8_trained.onnx")
 
-# sudo ip link set can0 type can bitrate 1000000
-# sudo ip link set up can0
-bus = can.interface.Bus(interface='socketcan', channel='can0')
+skip_taskset_check = False
+
+can_interface = "socketcan"
+can_channel = "can0"
 
 knee_odrive_node_id = 1 
 foot_odrive_node_id = 2
@@ -67,6 +67,19 @@ real_values = {
 # Parameters!!!
 #----------------------
 
+#----------------------------------------------------------------------------------------------------
+# These are self-serving tasks. As in they take care of OS level things 
+# and can manage setting up themselves from a fresh boot off of a properly configured system
+#----------------------------------------------------------------------------------------------------
+
+if skip_taskset_check == False:
+    if check_if_ran_with_taskset() != True:
+        print("The script detected that taskset may not have been used to run this program.")
+        input("Continue with Caution... ")
+
+bus = initialize_canbus(interfacef=can_interface, channelf=can_channel)
+#----------------------------------------------------------------------------------------------------
+
 #---------------------------------------------------------
 #variables that keep the program flowing as it should | Not frequently touched, or at all.
 #---------------------------------------------------------
@@ -75,6 +88,7 @@ foot_gearbox_ratio = -8/1
 
 # whatever the value the actions was multiplied by in training
 trained_model_motor_torque_limitscale = 5.0
+
 
 Knee_ODrive = ODrive(bus=bus, node_id=knee_odrive_node_id)
 Foot_ODrive = ODrive(bus=bus, node_id=foot_odrive_node_id)
@@ -147,7 +161,7 @@ keep_alive_thread.daemon = True # this is important because if Ctrl-C is done at
 
 #-------------------------------------------------------
 # ACTUAL PROGRAM
-#---------------------------------------------------------
+#-------------------------------------------------------
 print("Running first 50 inferences to make subsequent runs faster", end= ".. ")
 for _ in range(50):
     session.run(None, {"obs": np.empty((1, 7), dtype=np.float32)})
