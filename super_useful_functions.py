@@ -13,9 +13,10 @@ import os
 
 #TODO: eliminate bytes to signed function and just use struct.unpack.. eventuallys
 
-def check_if_ran_with_taskset():
+def check_if_ran_with_taskset(offset: int):
     # false positives can occur if OS limits the allowed cpus for some other reason.
     total_cpus = os.cpu_count()
+    total_cpus = total_cpus - offset
     allowed_cpus = len(os.sched_getaffinity(0))
     return allowed_cpus < total_cpus
 
@@ -23,7 +24,7 @@ def initialize_canbus(interfacef: str = "socketcan", channelf: str = "can0"):
     can_initalized = False  
 
     try:
-        buss = can.interface.Bus(interface=interfacef, channel=channelf)
+        can.interface.Bus(interface=interfacef, channel=channelf)
     except OSError as e:
         if e.errno == 19:
             context = pyudev.Context()
@@ -34,7 +35,7 @@ def initialize_canbus(interfacef: str = "socketcan", channelf: str = "can0"):
             for device in iter(monitor.poll, None):
                 if device.action == 'add' and device.get('ID_MODEL') == "USB_to_CAN_Adapter":
                     time.sleep(0.1)
-                    buss = can.interface.Bus(interface=interfacef, channel=channelf) # If this fails, USB Connection is likely intermittent
+                    can.interface.Bus(interface=interfacef, channel=channelf) # If this fails, USB Connection is likely intermittent
                     break
 
     print("USB-CAN adapter Connected")
@@ -49,6 +50,7 @@ def initialize_canbus(interfacef: str = "socketcan", channelf: str = "can0"):
 
     if can_initalized == True:
         print("CAN interface detected!")
+        buss = can.interface.Bus(interface=interfacef, channel=channelf)
         return buss
     else:
         print("CAN interface not detected! Attempting to initalize!")
@@ -61,6 +63,7 @@ def initialize_canbus(interfacef: str = "socketcan", channelf: str = "can0"):
         result3 = subprocess.run(["cat", "/sys/class/net/can0/operstate"], capture_output=True, text=True)
         if result3.stdout == "up\n" and result3.returncode == 0:
             can_initalized = True
+            buss = can.interface.Bus(interface=interfacef, channel=channelf)
             print("CAN interface has been initalized!")
             return buss
         else:
