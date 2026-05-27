@@ -73,7 +73,9 @@ real_values = {
 #----------------------------------------------------------------------------------------------------
 
 if skip_taskset_check == False:
-    if check_if_ran_with_taskset() != True:
+    if check_if_ran_with_taskset(offset=1) != True:
+        # we set an offset because on the rpi a cpu is isolated,
+        # so it gets subtracted from the total cpu count
         print("The script detected that taskset may not have been used to run this program.")
         input("Continue with Caution... ")
 
@@ -162,94 +164,100 @@ keep_alive_thread.daemon = True # this is important because if Ctrl-C is done at
 #-------------------------------------------------------
 # ACTUAL PROGRAM
 #-------------------------------------------------------
-print("Running first 50 inferences to make subsequent runs faster", end= ".. ")
-for _ in range(50):
-    session.run(None, {"obs": np.empty((1, 7), dtype=np.float32)})
+try:
+    print("Running first 50 inferences to make subsequent runs faster", end= ".. ")
+    for _ in range(50):
+        session.run(None, {"obs": np.empty((1, 7), dtype=np.float32)})
 
-print("Done")
-print("")
+    print("Done")
+    print("")
 
-mock_test = input("Is this a mock test? (y/n) ")
-#input handling
-if mock_test.strip().lower() == 'y':
-    do_preflight_checks([Knee_ODrive, Foot_ODrive], mock_values)
-elif mock_test.strip().lower() == 'n':
-    confirmation = input("Please confirm that this is a real test! ")
-    if confirmation.strip().lower() == 'y':
-        print("Confirmed")
-        do_preflight_checks([Knee_ODrive, Foot_ODrive], real_values)
+    mock_test = input("Is this a mock test? (y/n) ")
+    #input handling
+    if mock_test.strip().lower() == 'y':
+        do_preflight_checks([Knee_ODrive, Foot_ODrive], mock_values)
+    elif mock_test.strip().lower() == 'n':
+        confirmation = input("Please confirm that this is a real test! ")
+        if confirmation.strip().lower() == 'y':
+            print("Confirmed")
+            do_preflight_checks([Knee_ODrive, Foot_ODrive], real_values)
+        else:
+            bus.shutdown()
+            quit()
     else:
         bus.shutdown()
         quit()
-else:
+
+
+    initalize = input("Joints will be set to Closed Loop Control and positions set to 0, Continue? (y/n) ")
+
+    #input handling
+    if initalize.strip().lower() == 'y':
+        keep_alive_thread.start()
+
+        print("Waiting on Knee Joint")
+        Knee_ODrive.set_closed_loop_control()
+        Knee_ODrive.set_position_control()
+        print("Knee Joint Ready")
+
+        print("Waiting on Foot Joint")
+        Foot_ODrive.set_closed_loop_control()
+        Foot_ODrive.set_position_control()
+        print("Foot Joint Ready")
+
+        print("Waiting for IMU")
+        for msg in bus:
+            if msg.arbitration_id == imu_id:
+                break
+        print("All controllers working properly")
+    else:
+        bus.shutdown()
+        quit()
+
+    # we start the read thread here because we are no longer calling functions which expect responses from the odrives.
+    read_thread.start()
+
+    print("Flushing CAN BUS before resuming operation")
+    while can_bus_flushed.is_set() == False:
+        pass
+    print("Flushed!")
+
+    print("")
+    commence = input("Commence sim2real? (y/n) ")
+    # input handling
+    if commence.strip().lower() == 'y':
+        stop_keep_alive.set()
+        keep_alive_thread.join() 
+    else:
+        stop_keep_alive.set()
+        keep_alive_thread.join()
+        bus.shutdown()
+        quit()
+
+    Knee_ODrive.set_torque_control()
+    Foot_ODrive.set_torque_control()
+
+    #small delay
+    time.sleep(0.01)
+
+    # This is where the real magic happens! If you looking at this script
+    # as reference on how to achieve sim2real, this function is what your looking for!
+    run_control_loop(CTRL_HZ=CTRL_HZ,
+                    DECIMATION_FACTOR=DECIMATION_FACTOR,
+                    onnx_model=session,
+                    obs=observation_array,
+                    actions_high=actions_high,
+                    actions_low=actions_low,
+                    Knee_ODrive=Knee_ODrive,
+                    Foot_ODrive=Foot_ODrive,
+                    motor_torque_scale=trained_model_motor_torque_limitscale,
+                    lock=obs_lock
+                    )
+
+    # if going for thread approach, make sure you disable daemon mode for the can_read_thread
+    #control_loop_thread.start()
+except KeyboardInterrupt:
+    print("\nCaught Ctrl-C, setting ODrives to IDLE, and gracefully shutting down.")
+    Knee_ODrive.set_idle()
+    Foot_ODrive.set_idle()
     bus.shutdown()
-    quit()
-
-
-initalize = input("Joints will be set to Closed Loop Control and positions set to 0, Continue? (y/n) ")
-
-#input handling
-if initalize.strip().lower() == 'y':
-    keep_alive_thread.start()
-
-    print("Waiting on Knee Joint")
-    Knee_ODrive.set_closed_loop_control()
-    Knee_ODrive.set_position_control()
-    print("Knee Joint Ready")
-
-    print("Waiting on Foot Joint")
-    Foot_ODrive.set_closed_loop_control()
-    Foot_ODrive.set_position_control()
-    print("Foot Joint Ready")
-
-    print("Waiting for IMU")
-    for msg in bus:
-        if msg.arbitration_id == imu_id:
-            break
-    print("All controllers working properly")
-else:
-    bus.shutdown()
-    quit()
-
-# we start the read thread here because we are no longer calling functions which expect responses from the odrives.
-read_thread.start()
-
-print("Flushing CAN BUS before resuming operation")
-while can_bus_flushed.is_set() == False:
-    pass
-print("Flushed!")
-
-print("")
-commence = input("Commence sim2real? (y/n) ")
-# input handling
-if commence.strip().lower() == 'y':
-    stop_keep_alive.set()
-    keep_alive_thread.join() 
-else:
-    stop_keep_alive.set()
-    keep_alive_thread.join()
-    bus.shutdown()
-    quit()
-
-Knee_ODrive.set_torque_control()
-Foot_ODrive.set_torque_control()
-
-#small delay
-time.sleep(0.01)
-
-# This is where the real magic happens! If you looking at this script
-# as reference on how to achieve sim2real, this function is what your looking for!
-run_control_loop(CTRL_HZ=CTRL_HZ,
-                 DECIMATION_FACTOR=DECIMATION_FACTOR,
-                 onnx_model=session,
-                 obs=observation_array,
-                 actions_high=actions_high,
-                 actions_low=actions_low,
-                 Knee_ODrive=Knee_ODrive,
-                 Foot_ODrive=Foot_ODrive,
-                 motor_torque_scale=trained_model_motor_torque_limitscale,
-                 lock=obs_lock
-                 )
-
-# if going for thread approach, make sure you disable daemon mode for the can_read_thread
-#control_loop_thread.start()
