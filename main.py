@@ -237,6 +237,8 @@ try:
     Knee_ODrive.set_torque_control()
     Foot_ODrive.set_torque_control()
 
+    print("Starting Control Loop!")
+    
     #small delay
     time.sleep(0.01)
 
