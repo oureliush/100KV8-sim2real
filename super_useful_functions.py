@@ -8,6 +8,7 @@ import threading
 import pyudev
 import subprocess
 import os
+import gc
 
 #Safety Threads??
 
@@ -163,6 +164,7 @@ def run_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model: ort.Infer
             send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive, motor_torque_scale)
         
         policy_counter += 1
+        gc.collect()
 
         elapsed = time.perf_counter() - loop_start_time
         time.sleep(max(0.0, dt - elapsed))
@@ -180,6 +182,8 @@ def run_decimation_control_loop(CTRL_HZ: int, DECIMATION_FACTOR: int, onnx_model
         clamped_actions = np.clip(actions, -1.0, 1.0)
         rescaled_actions = rescale_actions(actions_low, actions_high, clamped_actions)
         send_joint_commands(rescaled_actions, Knee_ODrive, Foot_ODrive,motor_torque_scale)
+
+        gc.collect()
 
         elapsed = time.perf_counter() - loop_start_time
         time.sleep(max(0.0, dt - elapsed))

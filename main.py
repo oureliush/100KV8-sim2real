@@ -2,6 +2,8 @@ from ODrive_Tools import ODrive
 from super_useful_functions import *
 from preflight import *
 
+import gc
+
 import can
 import threading
 import numpy as np
@@ -226,6 +228,9 @@ try:
     commence = input("Commence sim2real? (y/n) ")
     # input handling
     if commence.strip().lower() == 'y':
+        gc.disable() # Disabling automatic garbage collection to reduce jitter. The loop will run garbage collection when its NOT time to do inference.
+        gc.collect()
+
         stop_keep_alive.set()
         keep_alive_thread.join() 
     else:
@@ -236,6 +241,7 @@ try:
 
     Knee_ODrive.set_torque_control()
     Foot_ODrive.set_torque_control()
+
 
     print("Starting Control Loop!")
 
@@ -273,5 +279,7 @@ try:
 except KeyboardInterrupt:
     print("\nCaught Ctrl-C, setting ODrives to IDLE, and gracefully shutting down.")
     Knee_ODrive.set_idle()
+    Knee_ODrive.clear_errors()
     Foot_ODrive.set_idle()
+    Foot_ODrive.clear_errors()
     bus.shutdown()
