@@ -58,8 +58,8 @@ real_values = {
     "axis0.config.can.version_msg_rate_ms": {"value": 0, "writable": True},
     "axis0.config.can.iq_msg_rate_ms": {"value": 0, "writable": True},
     "axis0.config.can.error_msg_rate_ms": {"value": 0, "writable": True},
-    "axis0.config.can.temperature_msg_rate_ms": {"value": 0, "writable": True},
-    "axis0.config.can.bus_voltage_msg_rate_ms": {"value": 0, "writable": True},
+    "axis0.config.can.temperature_msg_rate_ms": {"value": 100, "writable": True},
+    "axis0.config.can.bus_voltage_msg_rate_ms": {"value": 100, "writable": True},
     "axis0.config.can.torques_msg_rate_ms": {"value": 0, "writable": True},
     "axis0.config.can.powers_msg_rate_ms": {"value": 0, "writable": True},
 }
@@ -238,9 +238,21 @@ try:
     Foot_ODrive.set_torque_control()
 
     print("Starting Control Loop!")
-    
-    #small delay
-    time.sleep(0.01)
+
+    print(f'Encoder Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x09}')
+    print(f'Actions being sent to the Knee Joint will appear as a CAN_ID with a decimal {knee_odrive_node_id << 5 | 0x0e}') 
+    print(f'Heartbeat Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x01}')
+    print(f'Temperature Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x15}')
+    print(f'Bus Voltage Data from the Knee will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x17}')
+
+    print(f'Encoder Data from the Foot Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x09}')
+    print(f'Actions being sent to the Foot Joint will appear as a CAN_ID with a decimal {foot_odrive_node_id << 5 | 0x0e}')
+    print(f'Heartbeat Data from the Knee Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x01}')
+    print(f'Temperature Data from the Knee Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x15}')
+    print(f'Bus Voltage Data from the Knee will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x17}')
+
+    print(f'IMU Data from the Foot will appear as a CAN_ID with a decimal of {imu_id}') 
+
 
     # This is where the real magic happens! If you looking at this script
     # as reference on how to achieve sim2real, this function is what your looking for!
