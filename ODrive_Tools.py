@@ -209,7 +209,7 @@ class ODrive():
     
     def reboot(self, action):
         self.bus.send(can.Message(
-            arbitration_id=(self.node_id << 5 | 0x19),
+            arbitration_id=(self.node_id << 5 | 0x17),
             data=struct.pack('<B', action),
             is_extended_id=False
         ))
