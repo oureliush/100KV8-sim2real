@@ -1,8 +1,6 @@
 from ODrive_Tools import ODrive
 import time
 
-# Preflight checks is the process where the script will verify ODrive settings and change them as needed. 
-
 #maybe print checked values
 
 def preflight_check(ODrive: ODrive, expectations: dict):
