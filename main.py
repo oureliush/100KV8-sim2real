@@ -46,10 +46,14 @@ mock_values = {
 }
 
 real_values = {
-    "axis0.config.torque_soft_max": {"value": motor_torque_limit, "writable": False},
-    "axis0.config.torque_soft_min":  {"value": -motor_torque_limit, "writable": False},
+    #Non-writable
     "axis0.is_homed": {"value": True, "writable": False},
-    "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": False},
+    #Writable
+    "axis0.config.torque_soft_max": {"value": motor_torque_limit, "writable": True},
+    "axis0.config.torque_soft_min":  {"value": -motor_torque_limit, "writable": True},
+    "axis0.controller.config.vel_limit": {"value": motor_velocity_limit, "writable": True},
+    "axis0.controller.config.pos_gain": {"value": 80, "writable": True},
+    "axis0.controller.config.vel_gain": {"value": 0.667, "writable": True},
     "axis0.config.enable_watchdog": {"value": True, "writable": True},
     "axis0.config.watchdog_timeout": {"value": 0.025, "writable": True},
     #set msg intervals, to prevent CANBUS flooding
@@ -238,21 +242,23 @@ try:
     Foot_ODrive.set_torque_control()
 
     print("Starting Control Loop!")
-
+    print("")
     print(f'Encoder Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x09}')
     print(f'Actions being sent to the Knee Joint will appear as a CAN_ID with a decimal {knee_odrive_node_id << 5 | 0x0e}') 
     print(f'Heartbeat Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x01}')
     print(f'Temperature Data from the Knee Joint will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x15}')
     print(f'Bus Voltage Data from the Knee will appear as a CAN_ID with a decimal of {knee_odrive_node_id << 5 | 0x17}')
-
+    print("")
     print(f'Encoder Data from the Foot Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x09}')
     print(f'Actions being sent to the Foot Joint will appear as a CAN_ID with a decimal {foot_odrive_node_id << 5 | 0x0e}')
     print(f'Heartbeat Data from the Knee Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x01}')
     print(f'Temperature Data from the Knee Joint will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x15}')
     print(f'Bus Voltage Data from the Knee will appear as a CAN_ID with a decimal of {foot_odrive_node_id << 5 | 0x17}')
-
+    print("")
     print(f'IMU Data from the Foot will appear as a CAN_ID with a decimal of {imu_id}') 
-
+    
+    #small delay
+    #time.sleep(0.01)
 
     # This is where the real magic happens! If you looking at this script
     # as reference on how to achieve sim2real, this function is what your looking for!
@@ -273,5 +279,7 @@ try:
 except KeyboardInterrupt:
     print("\nCaught Ctrl-C, setting ODrives to IDLE, and gracefully shutting down.")
     Knee_ODrive.set_idle()
+    Knee_ODrive.clear_errors()
     Foot_ODrive.set_idle()
+    Foot_ODrive.clear_errors()
     bus.shutdown()

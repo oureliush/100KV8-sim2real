@@ -16,3 +16,5 @@ Knee_ODrive.set_absolute_pos(pos=-0.429)
 Knee_ODrive.write_parameter("axis0.is_homed", True)
 Foot_ODrive.set_absolute_pos(pos=-2.416)
 Foot_ODrive.write_parameter("axis0.is_homed", True)
+
+bus.shutdown()
